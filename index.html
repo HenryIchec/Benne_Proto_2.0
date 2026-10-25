@@ -1,0 +1,502 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Benne 2.0 – scan vidéo</title>
+<style>
+:root{--bg:#0E1A14;--ink:#F2F5F3;--muted:#A9B8AF;--panel:rgba(14,26,20,.82);--line:rgba(242,245,243,.18);--green:#2FB86B;--accent:#E8812A;--warn:#F2B13C;
+  box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);color-scheme:dark}
+*,*::before,*::after{box-sizing:inherit}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;overflow:hidden}
+#stage{position:fixed;inset:0}
+video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000}
+#roi{position:absolute;left:50%;top:44%;transform:translate(-50%,-50%);width:min(82vw,560px);aspect-ratio:3/2;border:3px dashed rgba(255,255,255,.85);border-radius:16px;box-shadow:0 0 0 9999px rgba(0,0,0,.35);transition:border-color .2s}
+#roi.reading{border-color:var(--accent);border-style:solid}
+#roi.ok{border-color:var(--green);border-style:solid}
+#hint{position:absolute;left:50%;transform:translateX(-50%);top:calc(44% + min(82vw,560px)/3 + 14px);width:90%;text-align:center;font-size:16px;font-weight:600;text-shadow:0 1px 3px #000}
+#top{position:absolute;left:0;right:0;top:0;padding:calc(10px + env(safe-area-inset-top,0px)) 14px 10px;display:flex;justify-content:space-between;align-items:center;background:linear-gradient(#000a,#0000)}
+#top b{font-size:18px}
+#top span{font-size:14px;color:var(--muted)}
+#chips{position:absolute;left:12px;right:12px;bottom:calc(86px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:8px}
+.chip{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-size:15px;display:flex;gap:10px;align-items:center;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.chip .dot{flex-shrink:0;width:22px;height:22px;border-radius:11px;border:2px solid var(--muted);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800}
+.chip.ok .dot{background:var(--green);border-color:var(--green);color:#fff}
+.chip.half .dot{border-color:var(--warn)}
+.chip .lbl{color:var(--muted);min-width:96px}
+.chip{position:relative;overflow:hidden}
+.chip .val{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chip .prog{position:absolute;left:0;bottom:0;height:4px;width:100%;background:transparent}
+.chip .prog i{display:block;height:100%;width:0;background:var(--accent);transition:width .1s linear}
+#check.small svg{width:min(26vw,120px)}
+#check.small{background:transparent}
+#bar{position:absolute;left:0;right:0;bottom:0;padding:10px 12px calc(12px + env(safe-area-inset-bottom,0px));display:flex;gap:8px;background:linear-gradient(#0000,#000c)}
+button{font:600 15px/1 system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 12px;cursor:pointer;flex:1}
+button.primary{background:var(--accent);border-color:var(--accent);color:#14261C}
+button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+button[hidden]{display:none}
+#check{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;background:rgba(14,26,20,.55);opacity:0;pointer-events:none;transition:opacity .2s}
+#check.show{opacity:1}
+#check svg{width:min(46vw,220px);height:auto;filter:drop-shadow(0 6px 20px rgba(0,0,0,.4))}
+#check p{margin:0;font-size:20px;font-weight:700;text-align:center;padding:0 20px}
+#start{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:24px;text-align:center;background:var(--bg)}
+#start h1{margin:0;font-size:30px}
+#start p{margin:0;color:var(--muted);max-width:420px;line-height:1.5}
+#start button{flex:none;padding:16px 26px;font-size:17px}
+#panel{position:absolute;inset:0;background:var(--bg);overflow:auto;padding:calc(16px + env(safe-area-inset-top,0px)) 16px calc(24px + env(safe-area-inset-bottom,0px));display:none}
+#panel.show{display:block}
+#panel h2{margin:0 0 12px;font-size:22px}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px}
+.stat{background:#17271E;border-radius:12px;padding:12px}
+.stat b{display:block;font-size:22px}
+.stat span{font-size:13px;color:var(--muted)}
+.tbl{overflow-x:auto;border:1px solid var(--line);border-radius:12px}
+table{border-collapse:collapse;width:100%;font-size:13px;min-width:640px}
+th,td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+th{color:var(--muted);font-weight:600}
+.row{display:flex;gap:8px;margin:14px 0}
+#dbg{position:absolute;left:12px;top:calc(52px + env(safe-area-inset-top,0px));max-width:70%;max-height:30%;overflow:hidden;font:11px/1.3 ui-monospace,Menlo,monospace;color:#cfe;background:#0008;padding:6px 8px;border-radius:8px;white-space:pre-wrap;display:none}
+</style>
+</head>
+<body>
+<div id="stage">
+  <video id="video" playsinline muted autoplay></video>
+  <div id="roi" aria-hidden="true"></div>
+  <div id="hint">Placez l’étiquette dans le cadre</div>
+  <div id="top"><b>Benne 2.0</b><span id="counter">0 vêtement</span></div>
+  <pre id="dbg"></pre>
+  <div id="chips">
+    <div class="chip" id="cMarque"><div class="dot"></div><span class="lbl">Marque</span><span class="val">—</span></div>
+    <div class="chip" id="cCompo"><div class="dot"></div><span class="lbl">Composition</span><span class="val">—</span><div class="prog"><i id="progBar"></i></div></div>
+  </div>
+  <div id="bar">
+    <button id="bNext">Pas de marque</button>
+    <button id="bTorch" hidden>Lampe</button>
+    <button id="bResults">Résultats</button>
+  </div>
+  <div id="check" role="status" aria-live="polite">
+    <svg viewBox="0 0 120 120" aria-hidden="true"><circle cx="60" cy="60" r="56" fill="#2FB86B"/><path d="M34 62 L52 80 L88 42" fill="none" stroke="#fff" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <p id="checkTxt"></p>
+  </div>
+  <div id="start">
+    <h1>Benne 2.0</h1>
+    <p>Montrez l’étiquette de marque : dès qu’elle est lue, un ✓ vert s’affiche et le vêtement est enregistré. Vous pouvez ensuite montrer l’étiquette de composition pendant quelques secondes, ou passer directement au vêtement suivant.</p>
+    <button class="primary" id="bStart">Démarrer la caméra</button>
+    <p id="startMsg"></p>
+  </div>
+  <div id="panel">
+    <h2>Résultats du test</h2>
+    <div class="stats">
+      <div class="stat"><b id="sN">0</b><span>vêtements</span></div>
+      <div class="stat"><b id="sT">–</b><span>s pour lire la marque</span></div>
+      <div class="stat"><b id="sC">–</b><span>avec composition</span></div>
+    </div>
+    <div class="tbl"><table><thead><tr><th>Heure</th><th>Marque lue en</th><th>Marque</th><th>Composition</th><th>Taille</th><th>Destination</th></tr></thead><tbody id="rows"></tbody></table></div>
+    <div class="row"><button class="primary" id="bCsv">Télécharger le CSV</button><button id="bBack">Retour au scan</button></div>
+    <div class="row" style="align-items:center"><label for="fenetre" style="flex:1;color:var(--muted)">Temps laissé pour présenter l’étiquette de composition</label>
+      <select id="fenetre" style="flex:1;font:600 15px system-ui,sans-serif;padding:12px;border-radius:12px;background:#17271E;color:var(--ink);border:1px solid var(--line)">
+        <option value="0">Aucun (marque seule)</option><option value="3">3 secondes</option><option value="5" selected>5 secondes</option><option value="8">8 secondes</option></select></div>
+    <div class="row"><button id="bDebug">Afficher le texte lu</button><button id="bClear">Effacer les résultats</button></div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
+<script>
+// <logic> ===================== LECTURE DES ÉTIQUETTES =====================
+const FIBRES = {
+  coton:'coton',cotton:'coton',katoen:'coton',baumwolle:'coton',algodon:'coton',cotone:'coton',
+  polyester:'polyester',poliester:'polyester',poliestere:'polyester',
+  polyamide:'polyamide',polyamid:'polyamide',poliamida:'polyamide',poliammide:'polyamide',nylon:'polyamide',
+  elasthanne:'élasthanne',elasthane:'élasthanne',elastane:'élasthanne',elasthan:'élasthanne',elastaan:'élasthanne',elastano:'élasthanne',spandex:'élasthanne',lycra:'élasthanne',
+  laine:'laine',wool:'laine',wol:'laine',wolle:'laine',lana:'laine',
+  cachemire:'cachemire',cashmere:'cachemire',kasjmier:'cachemire',mohair:'mohair',alpaga:'alpaga',alpaca:'alpaga',angora:'angora',
+  soie:'soie',silk:'soie',zijde:'soie',seide:'soie',seda:'soie',seta:'soie',
+  viscose:'viscose',viskose:'viscose',viscosa:'viscose',rayon:'viscose',modal:'modal',lyocell:'lyocell',tencel:'lyocell',cupro:'cupro',acetate:'acétate',acetat:'acétate',
+  lin:'lin',linen:'lin',linnen:'lin',leinen:'lin',lino:'lin',
+  acrylique:'acrylique',acrylic:'acrylique',acryl:'acrylique',acrilico:'acrylique',polyacryl:'acrylique',
+  chanvre:'chanvre',hemp:'chanvre',cuir:'cuir',leather:'cuir',leer:'cuir',leder:'cuir',polyurethane:'polyuréthane',polyurethan:'polyuréthane'
+};
+const PARTIES = {
+  'tissu principal':'principal','main fabric':'principal',shell:'principal',outer:'principal',exterieur:'principal',buitenstof:'principal',oberstoff:'principal','tejido principal':'principal',
+  doublure:'doublure',lining:'doublure',voering:'doublure',futter:'doublure',forro:'doublure',fodera:'doublure',
+  rembourrage:'rembourrage',garnissage:'rembourrage',filling:'rembourrage',padding:'rembourrage',vulling:'rembourrage',fullung:'rembourrage',relleno:'rembourrage',ouatine:'rembourrage',
+  'bord-cote':'bords-côtes','bords-cotes':'bords-côtes',ribbing:'bords-côtes',rib:'bords-côtes',boord:'bords-côtes',
+  manches:'manches',sleeves:'manches',mouwen:'manches',poches:'poches',pocket:'poches',pockets:'poches',zakken:'poches',capuche:'capuche',hood:'capuche',capuchon:'capuche'
+};
+const TYPES = [
+  ['T-shirt',['t-shirt','tshirt','tee-shirt','tee shirt']],['Sweat / hoodie',['sweatshirt','sweat-shirt','sweat','hoodie']],
+  ['Jean',['jeans','jean','denim']],['Short',['shorts','short','bermuda']],['Legging',['leggings','legging']],
+  ['Pantalon',['pantalon','trousers','pants','broek','hose','pantalones','chino']],['Blouse',['blouse','chemisier']],
+  ['Chemise',['chemise','shirt','hemd','overhemd','camisa']],['Polo',['polo']],
+  ['Pull',['pull','pullover','sweater','jumper','trui','cardigan','gilet']],['Manteau',['manteau','coat','mantel','parka','abrigo','doudoune','trench']],
+  ['Veste',['veste','jacket','jas','jacke','chaqueta','blazer','blouson']],['Robe',['robe','dress','jurk','kleid','vestido']],
+  ['Jupe',['jupe','skirt','rok','rock','falda']],['Sous-vêtement',['slip','boxer','culotte','soutien-gorge','underwear','ondergoed']],
+  ['Chaussettes',['chaussettes','socks','sokken','socken']]
+];
+const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const alt = keys => [...keys].sort((a, b) => b.length - a.length).map(esc).join('|');
+function normaliser(s) {
+  return s.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/％/g, '%').replace(/[’`]/g, "'");
+}
+const RF = alt(Object.keys(FIBRES));
+const RE_AVANT = new RegExp(`(?<!\\d)(\\d{1,3})(?:[ \\t]*%\\s*|[ \\t]*)(${RF})(?![a-z])`, 'g');
+const RE_APRES = new RegExp(`(?<![a-z])(${RF})[ \\t]*[:\\-]?[ \\t]*(\\d{1,3})(?:[ \\t]*%|(?![\\d°]))`, 'g');
+const RE_L_AVANT = new RegExp(`(?<!\\d)\\d{1,3}[ \\t]*%?[ \\t]*(?:${RF})(?![a-z])`, 'g');
+const RE_L_APRES = new RegExp(`(?<![a-z])(?:${RF})[ \\t]*[:\\-]?[ \\t]*\\d{1,3}`, 'g');
+const RE_PARTIES = new RegExp(`(?<![a-z])(${alt(Object.keys(PARTIES))})(?![a-z])`, 'g');
+
+function parserSegment(seg) {
+  const compo = {};
+  const add = (pct, mot) => { pct = +pct; if (pct > 0 && pct <= 100) { const f = FIBRES[mot]; compo[f] = Math.max(compo[f] || 0, pct); } };
+  const nAv = (seg.match(RE_L_AVANT) || []).length, nAp = (seg.match(RE_L_APRES) || []).length;
+  if (nAp > nAv) {
+    for (const m of seg.matchAll(RE_APRES)) add(m[2], m[1]);
+    for (const m of seg.replace(RE_APRES, ' ').matchAll(RE_AVANT)) add(m[1], m[2]);
+  } else {
+    for (const m of seg.matchAll(RE_AVANT)) add(m[1], m[2]);
+    for (const m of seg.replace(RE_AVANT, ' ').matchAll(RE_APRES)) add(m[2], m[1]);
+  }
+  return compo;
+}
+function extraireComposition(texte) {
+  const t = normaliser(texte), res = {};
+  let debut = 0, partie = 'principal'; const segs = [];
+  for (const m of t.matchAll(RE_PARTIES)) { segs.push([partie, t.slice(debut, m.index)]); debut = m.index + m[0].length; partie = PARTIES[m[1]]; }
+  segs.push([partie, t.slice(debut)]);
+  for (const [p, s] of segs) {
+    const c = parserSegment(s);
+    if (Object.keys(c).length) { const cible = res[p] || (res[p] = {}); for (const f in c) cible[f] = Math.max(cible[f] || 0, c[f]); }
+  }
+  return res;
+}
+function compoPrincipale(cp) { return cp.principal || Object.values(cp)[0] || {}; }
+function compoComplete(cp) {
+  const c = compoPrincipale(cp); const tot = Object.values(c).reduce((a, b) => a + b, 0);
+  return Object.keys(c).length > 0 && tot >= 98 && tot <= 102;
+}
+function formatCompo(cp) {
+  return Object.entries(cp).map(([p, c]) => (Object.keys(cp).length > 1 ? p + ' : ' : '') +
+    Object.entries(c).sort((a, b) => b[1] - a[1]).map(([f, v]) => `${v} % ${f}`).join(', ')).join(' | ');
+}
+
+// --- marques ---
+let MARQUES = {}, VARIANTES = [];
+function chargerMarquesCSV(txt) {
+  MARQUES = {}; VARIANTES = [];
+  const lignes = txt.replace(/^\uFEFF/, '').split(/\r?\n/).filter(l => l.trim());
+  const head = lignes.shift().split(';').map(h => h.trim().toLowerCase());
+  const iM = head.indexOf('marque'), iS = head.indexOf('statut'), iV = head.indexOf('variantes');
+  for (const l of lignes) {
+    const c = l.split(';'); const nom = (c[iM] || '').trim(); if (!nom) continue;
+    MARQUES[nom] = ((c[iS] || 'à vérifier').trim().toLowerCase());
+    const vs = [nom, ...((c[iV] || '').split('|').map(v => v.trim()).filter(Boolean))];
+    for (const v of vs) VARIANTES.push([normaliser(v).replace(/\s+/g, ' ').trim(), nom]);
+  }
+}
+function lcs(a, b) {
+  const m = a.length, n = b.length; let prev = new Array(n + 1).fill(0);
+  for (let i = 1; i <= m; i++) { const cur = [0]; for (let j = 1; j <= n; j++) cur[j] = a[i - 1] === b[j - 1] ? prev[j - 1] + 1 : Math.max(prev[j], cur[j - 1]); prev = cur; }
+  return prev[n];
+}
+const ratio = (a, b) => (a.length + b.length) ? 200 * lcs(a, b) / (a.length + b.length) : 0;
+function partialRatio(court, long) {
+  let best = 0; for (let i = 0; i + court.length <= long.length; i++) best = Math.max(best, ratio(court, long.slice(i, i + court.length)));
+  return best;
+}
+const CONF = { '1': 'i', '0': 'o', '3': 'e', '|': 'l' };
+function detecterMarqueScore(texte, seuil = 85) {
+  let meilleur = null, score = 0, longueur = 0;
+  for (const ligne of texte.split('\n')) {
+    const base = normaliser(ligne).replace(/\s+/g, ' ').trim(); if (base.length < 2) continue;
+    for (const l of new Set([base, base.replace(/[103|]/g, ch => CONF[ch])])) {
+      for (const [v, nom] of VARIANTES) {
+        let s = 0;
+        if (new RegExp(`(?<![a-z0-9])${esc(v)}(?![a-z0-9])`).test(l) && (v.length >= 6 || l.startsWith(v) || l.length <= v.length + 6)) s = 100;
+        if (s === 0 && v.length >= 4) { s = ratio(l, v); if (v.length >= 8 && l.length >= v.length) s = Math.max(s, partialRatio(v, l)); }
+        if (s > score || (s === score && v.length > longueur)) { meilleur = nom; score = s; longueur = v.length; }
+      }
+    }
+  }
+  return score >= seuil ? [meilleur, score] : [null, score];
+}
+function detecterMarque(texte, seuil = 85) { return detecterMarqueScore(texte, seuil)[0]; }
+
+// --- taille et type ---
+const TL = '(?:\\d?X{1,4}[SL]|XS|S|M|L|XL)';
+const RE_TAILLES = [
+  [/\bW\s?(\d{2})\s*[\/ -]?\s*L\s?(\d{2})\b/, m => `W${m[1]} L${m[2]}`],
+  [new RegExp(`\\b(?:TAILLE|SIZE|MAAT|TALLA|TAGLIA|GROSSE|GR\\.)\\s*[:\\-]?\\s*(${TL}|\\d{2,3}(?:\\/\\d{2,3})?)\\b`), m => m[1]],
+  [/\b(?:EUR?|FR|IT|DE|NL|BE)\s*[:\-]?\s*(\d{2}(?:[.,]5)?)\b/, m => `EU ${m[1]}`],
+  [/\b(\d{1,2})\s*(?:ANS|YEARS|YRS|JAAR|JAHRE)\b/, m => `${m[1]} ans`],
+];
+const RE_TAILLE_SEULE = new RegExp(`^(${TL})(?:\\s*\\/\\s*[A-Z]{1,3})?$`);
+function detecterTaille(texte) {
+  const t = normaliser(texte).toUpperCase();
+  for (const [re, f] of RE_TAILLES) { const m = t.match(re); if (m) return f(m); }
+  for (const l of t.split('\n')) { const m = l.trim().match(RE_TAILLE_SEULE); if (m) return m[1]; }
+  return null;
+}
+function detecterType(texte) {
+  let t = normaliser(texte);
+  for (const p of ['pull&bear', 'pull & bear', 'pull and bear', 'polo ralph lauren']) t = t.split(p).join(' ');
+  for (const [nom, mots] of TYPES) for (const m of mots) if (new RegExp(`(?<![a-z])${esc(m)}(?![a-z])`).test(t)) return nom;
+  return null;
+}
+function destination(marque, cp) {
+  const statut = marque ? MARQUES[marque] : null;
+  if (statut === 'revendable') return 'Revente';
+  if (statut === 'invendable') {
+    const c = compoPrincipale(cp); const e = Object.entries(c).sort((a, b) => b[1] - a[1])[0];
+    if (!e) return 'Recyclage';
+    return e[1] >= 95 ? `Recyclage – ${e[0]}` : 'Recyclage – mélange';
+  }
+  return 'À vérifier';
+}
+// </logic> ===================================================================
+
+const MARQUES_SECOURS = `marque;statut;variantes
+Levi's;revendable;Levis
+Carhartt;revendable;Carhartt WIP
+Tommy Hilfiger;revendable;Hilfiger|Tommy Jeans
+Ralph Lauren;revendable;Polo Ralph Lauren
+Massimo Dutti;revendable;
+Uniqlo;revendable;
+Zara;invendable;Zara Woman|Zara Man|TRF
+H&M;invendable;H & M|Divided
+Primark;invendable;
+Shein;invendable;
+Jules;invendable;
+Celio;invendable;`;
+
+// ===================== APPLICATION =====================
+const $ = id => document.getElementById(id);
+const video = $('video');
+// ----- Réglages -----
+const CHECK_MS = 700;               // durée d'affichage du ✓ (le scan continue pendant ce temps)
+const ATTENTE_COMPO_ORPHELINE = 5000; // une composition lue avant la marque reste en attente 5 s
+let FENETRE_MS = 5000;              // temps laissé pour présenter l'étiquette de composition après la marque
+try { const f = localStorage.getItem('benne-scan-fenetre'); if (f !== null) FENETRE_MS = +f; } catch (e) {}
+
+let worker, track, scanning = false, busy = false;
+let journal = [];
+try { journal = JSON.parse(localStorage.getItem('benne-scan-journal') || '[]'); } catch (e) { journal = []; }
+
+// ----- État de la machine de lecture -----
+// 'marque'  : on attend une étiquette de marque
+// 'compo'   : la marque vient d'être enregistrée, on laisse quelques secondes pour la composition
+let etat = 'marque';
+let dernier = null;              // dernier vêtement enregistré (on peut lui ajouter la composition)
+let finFenetre = 0;
+let votesMarque = {}, votesCompo = {};
+let debutLecture = null;         // première lecture utile du vêtement en cours
+let derniereMarque = null, videDepuisEnregistrement = true;  // évite d'enregistrer deux fois la même étiquette
+let compoOrpheline = null;       // composition lue avant la marque : { cp, t }
+
+function vote(map, cle) { map[cle] = (map[cle] || 0) + 1; return map[cle]; }
+function sauver() { try { localStorage.setItem('benne-scan-journal', JSON.stringify(journal)); } catch (e) {} }
+
+function majChips() {
+  const cm = $('cMarque'), cc = $('cCompo');
+  const enFenetre = etat === 'compo';
+  const mCand = Object.keys(votesMarque)[0];
+  cm.className = 'chip' + (enFenetre ? ' ok' : mCand ? ' half' : '');
+  cm.querySelector('.dot').textContent = enFenetre ? '✓' : '';
+  cm.querySelector('.val').textContent = enFenetre ? dernier.marque : (mCand || '—');
+  const compoOk = enFenetre && dernier.composition;
+  cc.className = 'chip' + (compoOk ? ' ok' : Object.keys(votesCompo).length ? ' half' : '');
+  cc.querySelector('.dot').textContent = compoOk ? '✓' : '';
+  cc.querySelector('.val').textContent = compoOk ? dernier.composition
+    : enFenetre ? 'Présentez l’étiquette de composition (facultatif)'
+    : compoOrpheline ? formatCompo(compoOrpheline.cp) + ' (en attente de la marque)' : '—';
+  $('hint').textContent = enFenetre ? 'Composition, ou vêtement suivant' : 'Placez l’étiquette de marque dans le cadre';
+  $('counter').textContent = journal.length + (journal.length > 1 ? ' vêtements' : ' vêtement');
+}
+
+function afficherCheck(texte, petit) {
+  $('checkTxt').textContent = texte;
+  $('check').className = 'show' + (petit ? ' small' : '');
+  $('roi').className = 'ok';
+  if (navigator.vibrate) navigator.vibrate(petit ? 40 : 80);
+  clearTimeout(afficherCheck.t);
+  afficherCheck.t = setTimeout(() => { $('check').className = ''; $('roi').className = ''; }, CHECK_MS);
+}
+
+function enregistrerMarque(marque, maintenant, cpDirect) {
+  const cp = cpDirect || (compoOrpheline && maintenant - compoOrpheline.t < ATTENTE_COMPO_ORPHELINE ? compoOrpheline.cp : null);
+  dernier = {
+    horodatage: new Date(maintenant).toISOString().slice(0, 19),
+    duree_marque_s: Math.round((maintenant - (debutLecture || maintenant)) / 100) / 10,
+    marque: marque || '', statut: marque ? (MARQUES[marque] || 'hors liste') : 'non lue',
+    composition: cp ? formatCompo(cp) : '', composition_ajoutee: !!cp, delai_compo_s: cp ? 0 : '',
+    taille: '', type: '', destination: destination(marque, cp || {}), _cp: cp, _t: maintenant,
+  };
+  journal.push(dernier); sauver();
+  compoOrpheline = null; votesMarque = {}; votesCompo = {}; debutLecture = null;
+  derniereMarque = marque; videDepuisEnregistrement = false;
+  afficherCheck((marque || 'Sans marque') + ' → ' + dernier.destination, false);
+  if (FENETRE_MS > 0 && !cp) { etat = 'compo'; finFenetre = maintenant + FENETRE_MS; } else etat = 'marque';
+  majChips();
+}
+
+function ajouterCompo(cp, maintenant) {
+  dernier._cp = cp;
+  dernier.composition = formatCompo(cp); dernier.composition_ajoutee = true;
+  dernier.delai_compo_s = Math.round((maintenant - dernier._t) / 100) / 10;
+  dernier.destination = destination(dernier.marque || null, cp);
+  sauver(); votesCompo = {};
+  afficherCheck('Composition ajoutée → ' + dernier.destination, true);
+  majChips();
+  etat = 'marque';
+  setTimeout(majChips, CHECK_MS);
+}
+
+function analyser(texte) {
+  const maintenant = Date.now();
+  const [marque, score] = detecterMarqueScore(texte);
+  const cp = extraireComposition(texte);
+  const compoOk = compoComplete(cp);
+  const tl = detecterTaille(texte), ty = detecterType(texte);
+
+  if (!marque) videDepuisEnregistrement = true;          // l'étiquette précédente a quitté le cadre
+  // Même étiquette que celle qu'on vient d'enregistrer : on l'ignore
+  const nouvelleMarque = marque && (marque !== derniereMarque || videDepuisEnregistrement);
+
+  // 1. Pendant la fenêtre : une composition complète s'ajoute au dernier vêtement
+  if (etat === 'compo' && compoOk && (!marque || (dernier && marque === dernier.marque))) {   // l'étiquette de composition porte parfois aussi la marque
+    if (vote(votesCompo, JSON.stringify(cp)) >= 2) { ajouterCompo(cp, maintenant); }
+    if (tl && dernier && !dernier.taille) dernier.taille = tl;
+    majChips(); return;
+  }
+  if (etat === 'compo' && (tl || ty) && dernier) { if (tl && !dernier.taille) dernier.taille = tl; if (ty && !dernier.type) dernier.type = ty; sauver(); }
+
+  // 2. Une marque : enregistrement immédiat (1 lecture si exacte, 2 si approximative)
+  if (nouvelleMarque) {
+    if (!debutLecture) debutLecture = maintenant;
+    if (score >= 100 || vote(votesMarque, marque) >= 2) {
+      enregistrerMarque(marque, maintenant, compoOk ? cp : null);   // marque et composition sur la même étiquette
+      if (tl) dernier.taille = tl; if (ty) dernier.type = ty; sauver();
+      return;
+    }
+  }
+
+  // 3. Hors fenêtre : une composition lue avant la marque est gardée en attente
+  if (etat === 'marque' && compoOk && !marque) {
+    if (vote(votesCompo, JSON.stringify(cp)) >= 2) { compoOrpheline = { cp, t: maintenant }; votesCompo = {}; }
+    if (!debutLecture) debutLecture = maintenant;
+  }
+  majChips();
+}
+
+function tic() {   // gère la fin de la fenêtre et la barre de progression
+  const maintenant = Date.now();
+  if (etat === 'compo') {
+    const reste = Math.max(0, finFenetre - maintenant);
+    $('progBar').style.width = (100 * reste / Math.max(1, FENETRE_MS)) + '%';
+    if (reste === 0) { etat = 'marque'; votesCompo = {}; majChips(); }
+  } else $('progBar').style.width = '0%';
+  if (compoOrpheline && maintenant - compoOrpheline.t > ATTENTE_COMPO_ORPHELINE) { compoOrpheline = null; majChips(); }
+  requestAnimationFrame(tic);
+}
+
+// Capture de la zone du cadre en pleine résolution
+const cnv = document.createElement('canvas'), ctx = cnv.getContext('2d', { willReadFrequently: true });
+function capturerZone() {
+  const vw = video.videoWidth, vh = video.videoHeight; if (!vw) return null;
+  const r = $('roi').getBoundingClientRect(), s = $('stage').getBoundingClientRect();
+  const echelle = Math.max(s.width / vw, s.height / vh);       // object-fit: cover
+  const ox = (vw * echelle - s.width) / 2, oy = (vh * echelle - s.height) / 2;
+  const sx = (r.left - s.left + ox) / echelle, sy = (r.top - s.top + oy) / echelle;
+  const sw = r.width / echelle, sh = r.height / echelle;
+  const cible = Math.min(1600, Math.max(900, sw));               // largeur de travail pour l'OCR
+  cnv.width = Math.round(cible); cnv.height = Math.round(cible * sh / sw);
+  ctx.drawImage(video, sx, sy, sw, sh, 0, 0, cnv.width, cnv.height);
+  // niveaux de gris + étirement du contraste
+  const img = ctx.getImageData(0, 0, cnv.width, cnv.height), d = img.data;
+  let min = 255, max = 0;
+  for (let i = 0; i < d.length; i += 4) { const g = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]; d[i] = g; if (g < min) min = g; if (g > max) max = g; }
+  const k = 255 / Math.max(1, max - min);
+  for (let i = 0; i < d.length; i += 4) { const g = (d[i] - min) * k; d[i] = d[i + 1] = d[i + 2] = g; }
+  ctx.putImageData(img, 0, 0);
+  return cnv;
+}
+
+async function boucle() {
+  if (!scanning) return;
+  if (!busy && !$('panel').classList.contains('show')) {
+    const c = capturerZone();
+    if (c) {
+      busy = true; $('roi').className = 'reading';
+      try {
+        const { data } = await worker.recognize(c);
+        if ($('dbg').style.display === 'block') $('dbg').textContent = data.text;
+        analyser(data.text);
+      } catch (e) { console.error(e); }
+      busy = false; if ($('roi').className === 'reading') $('roi').className = '';
+    }
+  }
+  setTimeout(boucle, 40);
+}
+
+async function demarrer() {
+  $('startMsg').textContent = 'Chargement du lecteur d’étiquettes…';
+  try {
+    const r = await fetch('marques.csv', { cache: 'no-store' });
+    chargerMarquesCSV(r.ok ? await r.text() : MARQUES_SECOURS);
+  } catch (e) { chargerMarquesCSV(MARQUES_SECOURS); }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: {
+      facingMode: { ideal: 'environment' }, width: { ideal: 3840 }, height: { ideal: 2160 }, frameRate: { ideal: 30 } } });
+    video.srcObject = stream; await video.play();
+    track = stream.getVideoTracks()[0];
+    const cap = track.getCapabilities ? track.getCapabilities() : {};
+    const adv = [];
+    if (cap.focusMode && cap.focusMode.includes('continuous')) adv.push({ focusMode: 'continuous' });
+    if (adv.length) track.applyConstraints({ advanced: adv }).catch(() => {});
+    if (cap.torch) $('bTorch').hidden = false;
+  } catch (e) {
+    $('startMsg').textContent = 'Impossible d’accéder à la caméra. Autorisez-la dans le navigateur (la page doit être en https).';
+    return;
+  }
+  try {
+    worker = await Tesseract.createWorker('fra+eng');
+    await worker.setParameters({ tessedit_pageseg_mode: '11', preserve_interword_spaces: '1' });
+  } catch (e) { $('startMsg').textContent = 'Le lecteur d’étiquettes n’a pas pu se charger. Vérifiez la connexion internet.'; return; }
+  $('start').style.display = 'none'; scanning = true; majChips(); boucle(); tic();
+}
+
+// Boutons
+$('bStart').onclick = demarrer;
+$('bNext').onclick = () => enregistrerMarque(null, Date.now());   // vêtement sans étiquette de marque
+let torchOn = false;
+$('bTorch').onclick = () => { torchOn = !torchOn; track.applyConstraints({ advanced: [{ torch: torchOn }] }).catch(() => {}); $('bTorch').textContent = torchOn ? 'Lampe ✓' : 'Lampe'; };
+function afficherResultats() {
+  $('sN').textContent = journal.length;
+  const d = journal.map(r => r.duree_marque_s).filter(x => x > 0);
+  $('sT').textContent = d.length ? (d.reduce((a, b) => a + b, 0) / d.length).toFixed(1) : '–';
+  $('sC').textContent = journal.length ? Math.round(100 * journal.filter(r => r.composition_ajoutee).length / journal.length) + ' %' : '–';
+  $('rows').innerHTML = '';
+  for (const r of [...journal].reverse()) {
+    const tr = document.createElement('tr');
+    for (const v of [r.horodatage.slice(11), r.duree_marque_s + ' s', r.marque || '—', r.composition || '—', r.taille || '—', r.destination]) { const td = document.createElement('td'); td.textContent = v; tr.appendChild(td); }
+    $('rows').appendChild(tr);
+  }
+  $('panel').classList.add('show');
+}
+$('bResults').onclick = afficherResultats;
+$('bBack').onclick = () => $('panel').classList.remove('show');
+$('bDebug').onclick = () => { const d = $('dbg'); d.style.display = d.style.display === 'block' ? 'none' : 'block'; $('bDebug').textContent = d.style.display === 'block' ? 'Masquer le texte lu' : 'Afficher le texte lu'; };
+$('fenetre').value = String(FENETRE_MS / 1000);
+$('fenetre').onchange = e => { FENETRE_MS = +e.target.value * 1000; try { localStorage.setItem('benne-scan-fenetre', FENETRE_MS); } catch (x) {} };
+$('bClear').onclick = () => { if (confirm('Effacer tous les résultats enregistrés sur cet appareil ?')) { journal = []; sauver(); afficherResultats(); majChips(); } };
+$('bCsv').onclick = () => {
+  if (!journal.length) return;
+  const cols = [...new Set(journal.flatMap(r => Object.keys(r)))].filter(c => !c.startsWith('_'));
+  const csv = '\uFEFF' + [cols.join(';'), ...journal.map(r => cols.map(c => `"${String(r[c] ?? '').replace(/"/g, '""')}"`).join(';'))].join('\r\n');
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+  a.download = 'resultats_scan_video.csv'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+};
+majChips();
+</script>
+</body>
+</html>
