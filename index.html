@@ -57,6 +57,17 @@ th,td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left;verti
 th{color:var(--muted);font-weight:600}
 .row{display:flex;gap:8px;margin:14px 0}
 #dbg{position:absolute;left:12px;top:calc(52px + env(safe-area-inset-top,0px));max-width:70%;max-height:30%;overflow:hidden;font:11px/1.3 ui-monospace,Menlo,monospace;color:#cfe;background:#0008;padding:6px 8px;border-radius:8px;white-space:pre-wrap;display:none}
+#etat{position:absolute;left:0;right:0;bottom:0;padding:18px 16px calc(18px + env(safe-area-inset-bottom,0px));background:var(--panel);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-top:1px solid var(--line);border-radius:18px 18px 0 0;transform:translateY(105%);transition:transform .2s;z-index:5}
+#etat.show{transform:none}
+#etat h3{margin:0 0 4px;font-size:20px}
+#etat .marque{margin:0 0 14px;color:var(--muted);font-size:15px}
+#etat .choix{display:flex;flex-direction:column;gap:10px}
+#etat .choix button{padding:18px 14px;font-size:17px;text-align:left}
+#etat .choix button.neuf{border-color:var(--green)}
+#etat .choix button.abime{border-color:var(--accent)}
+#etat .passer{margin-top:10px;width:100%;background:transparent;border:none;color:var(--muted);font-weight:500;padding:10px}
+#etat .temps{height:4px;border-radius:2px;background:var(--line);margin-top:12px;overflow:hidden}
+#etat .temps i{display:block;height:100%;width:100%;background:var(--accent)}
 </style>
 </head>
 <body>
@@ -68,12 +79,22 @@ th{color:var(--muted);font-weight:600}
   <pre id="dbg"></pre>
   <div id="chips">
     <div class="chip" id="cMarque"><div class="dot"></div><span class="lbl">Marque</span><span class="val">—</span></div>
-    <div class="chip" id="cCompo"><div class="dot"></div><span class="lbl">Composition</span><span class="val">—</span><div class="prog"><i id="progBar"></i></div></div>
   </div>
   <div id="bar">
     <button id="bNext">Pas de marque</button>
     <button id="bTorch" hidden>Lampe</button>
     <button id="bResults">Résultats</button>
+  </div>
+  <div id="etat" role="dialog" aria-modal="true" aria-labelledby="etatTitre">
+    <h3 id="etatTitre">Quel est l’état du vêtement ?</h3>
+    <p class="marque" id="etatMarque"></p>
+    <div class="choix">
+      <button class="neuf" data-etat="Comme neuf">Comme neuf</button>
+      <button data-etat="Porté, en bon état">Porté, en bon état</button>
+      <button class="abime" data-etat="Abîmé">Abîmé (trou, tache, usure)</button>
+    </div>
+    <button class="passer" id="bPasser">Passer sans indiquer l’état</button>
+    <div class="temps"><i id="etatTemps"></i></div>
   </div>
   <div id="check" role="status" aria-live="polite">
     <svg viewBox="0 0 120 120" aria-hidden="true"><circle cx="60" cy="60" r="56" fill="#2FB86B"/><path d="M34 62 L52 80 L88 42" fill="none" stroke="#fff" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -81,7 +102,7 @@ th{color:var(--muted);font-weight:600}
   </div>
   <div id="start">
     <h1>Benne 2.0</h1>
-    <p>Montrez l’étiquette de marque : dès qu’elle est lue, un ✓ vert s’affiche et le vêtement est enregistré. Vous pouvez ensuite montrer l’étiquette de composition pendant quelques secondes, ou passer directement au vêtement suivant.</p>
+    <p>Montrez l’étiquette de marque devant la caméra. Dès qu’elle est lue, choisissez l’état du vêtement : il est enregistré et orienté vers le bon compartiment.</p>
     <button class="primary" id="bStart">Démarrer la caméra</button>
     <p id="startMsg"></p>
   </div>
@@ -90,13 +111,13 @@ th{color:var(--muted);font-weight:600}
     <div class="stats">
       <div class="stat"><b id="sN">0</b><span>vêtements</span></div>
       <div class="stat"><b id="sT">–</b><span>s pour lire la marque</span></div>
-      <div class="stat"><b id="sC">–</b><span>avec composition</span></div>
+      <div class="stat"><b id="sC">–</b><span>avec état indiqué</span></div>
     </div>
-    <div class="tbl"><table><thead><tr><th>Heure</th><th>Marque lue en</th><th>Marque</th><th>Composition</th><th>Taille</th><th>Destination</th></tr></thead><tbody id="rows"></tbody></table></div>
+    <div class="tbl"><table><thead><tr><th>Heure</th><th>Marque lue en</th><th>Marque</th><th>État</th></tr></thead><tbody id="rows"></tbody></table></div>
     <div class="row"><button class="primary" id="bCsv">Télécharger le CSV</button><button id="bBack">Retour au scan</button></div>
-    <div class="row" style="align-items:center"><label for="fenetre" style="flex:1;color:var(--muted)">Temps laissé pour présenter l’étiquette de composition</label>
+    <div class="row" style="align-items:center"><label for="fenetre" style="flex:1;color:var(--muted)">Temps laissé pour choisir l’état</label>
       <select id="fenetre" style="flex:1;font:600 15px system-ui,sans-serif;padding:12px;border-radius:12px;background:#17271E;color:var(--ink);border:1px solid var(--line)">
-        <option value="0">Aucun (marque seule)</option><option value="3">3 secondes</option><option value="5" selected>5 secondes</option><option value="8">8 secondes</option></select></div>
+        <option value="4">4 secondes</option><option value="6" selected>6 secondes</option><option value="10">10 secondes</option><option value="0">Attendre le choix</option></select></div>
     <div class="row"><button id="bDebug">Afficher le texte lu</button><button id="bClear">Effacer les résultats</button></div>
   </div>
 </div>
@@ -243,6 +264,13 @@ function detecterType(texte) {
   for (const [nom, mots] of TYPES) for (const m of mots) if (new RegExp(`(?<![a-z])${esc(m)}(?![a-z])`).test(t)) return nom;
   return null;
 }
+function destinationEtat(marque, etat) {
+  const statut = marque ? MARQUES[marque] : null;
+  if (etat === 'Abîmé') return 'Recyclage';
+  if (statut === 'revendable') return 'Revente';
+  if (statut === 'invendable') return 'Recyclage';
+  return 'À vérifier';
+}
 function destination(marque, cp) {
   const statut = marque ? MARQUES[marque] : null;
   if (statut === 'revendable') return 'Revente';
@@ -272,130 +300,90 @@ Celio;invendable;`;
 // ===================== APPLICATION =====================
 const $ = id => document.getElementById(id);
 const video = $('video');
-// ----- Réglages -----
-const CHECK_MS = 700;               // durée d'affichage du ✓ (le scan continue pendant ce temps)
-const ATTENTE_COMPO_ORPHELINE = 5000; // une composition lue avant la marque reste en attente 5 s
-let FENETRE_MS = 5000;              // temps laissé pour présenter l'étiquette de composition après la marque
-try { const f = localStorage.getItem('benne-scan-fenetre'); if (f !== null) FENETRE_MS = +f; } catch (e) {}
+const CHECK_MS = 900;                 // durée d'affichage du ✓
+let DELAI_ETAT_MS = 6000;             // temps laissé pour choisir l'état (0 = attendre le choix)
+try { const f = localStorage.getItem('benne-scan-delai-etat'); if (f !== null) DELAI_ETAT_MS = +f; } catch (e) {}
 
 let worker, track, scanning = false, busy = false;
 let journal = [];
 try { journal = JSON.parse(localStorage.getItem('benne-scan-journal') || '[]'); } catch (e) { journal = []; }
 
-// ----- État de la machine de lecture -----
-// 'marque'  : on attend une étiquette de marque
-// 'compo'   : la marque vient d'être enregistrée, on laisse quelques secondes pour la composition
-let etat = 'marque';
-let dernier = null;              // dernier vêtement enregistré (on peut lui ajouter la composition)
-let finFenetre = 0;
-let votesMarque = {}, votesCompo = {};
-let debutLecture = null;         // première lecture utile du vêtement en cours
-let derniereMarque = null, videDepuisEnregistrement = true;  // évite d'enregistrer deux fois la même étiquette
-let compoOrpheline = null;       // composition lue avant la marque : { cp, t }
+// États : 'scan' (on cherche une marque) ou 'choix' (le donneur choisit l'état)
+let mode = 'scan';
+let enAttente = null;                 // { marque, debut, tLue }
+let finChoix = 0;
+let votesMarque = {}, debutLecture = null;
+let derniereMarque = null, videDepuisEnregistrement = true;   // évite d'enregistrer deux fois la même étiquette
 
 function vote(map, cle) { map[cle] = (map[cle] || 0) + 1; return map[cle]; }
 function sauver() { try { localStorage.setItem('benne-scan-journal', JSON.stringify(journal)); } catch (e) {} }
 
 function majChips() {
-  const cm = $('cMarque'), cc = $('cCompo');
-  const enFenetre = etat === 'compo';
-  const mCand = Object.keys(votesMarque)[0];
-  cm.className = 'chip' + (enFenetre ? ' ok' : mCand ? ' half' : '');
-  cm.querySelector('.dot').textContent = enFenetre ? '✓' : '';
-  cm.querySelector('.val').textContent = enFenetre ? dernier.marque : (mCand || '—');
-  const compoOk = enFenetre && dernier.composition;
-  cc.className = 'chip' + (compoOk ? ' ok' : Object.keys(votesCompo).length ? ' half' : '');
-  cc.querySelector('.dot').textContent = compoOk ? '✓' : '';
-  cc.querySelector('.val').textContent = compoOk ? dernier.composition
-    : enFenetre ? 'Présentez l’étiquette de composition (facultatif)'
-    : compoOrpheline ? formatCompo(compoOrpheline.cp) + ' (en attente de la marque)' : '—';
-  $('hint').textContent = enFenetre ? 'Composition, ou vêtement suivant' : 'Placez l’étiquette de marque dans le cadre';
+  const cm = $('cMarque');
+  const cand = Object.keys(votesMarque)[0];
+  const ok = mode === 'choix' && enAttente && enAttente.marque;
+  cm.className = 'chip' + (ok ? ' ok' : cand ? ' half' : '');
+  cm.querySelector('.dot').textContent = ok ? '✓' : '';
+  cm.querySelector('.val').textContent = ok ? enAttente.marque : (cand || '—');
+  $('hint').textContent = mode === 'choix' ? 'Choisissez l’état du vêtement' : 'Placez l’étiquette de marque dans le cadre';
   $('counter').textContent = journal.length + (journal.length > 1 ? ' vêtements' : ' vêtement');
 }
 
-function afficherCheck(texte, petit) {
+function afficherCheck(texte) {
   $('checkTxt').textContent = texte;
-  $('check').className = 'show' + (petit ? ' small' : '');
-  $('roi').className = 'ok';
-  if (navigator.vibrate) navigator.vibrate(petit ? 40 : 80);
+  $('check').className = 'show'; $('roi').className = 'ok';
+  if (navigator.vibrate) navigator.vibrate(80);
   clearTimeout(afficherCheck.t);
   afficherCheck.t = setTimeout(() => { $('check').className = ''; $('roi').className = ''; }, CHECK_MS);
 }
 
-function enregistrerMarque(marque, maintenant, cpDirect) {
-  const cp = cpDirect || (compoOrpheline && maintenant - compoOrpheline.t < ATTENTE_COMPO_ORPHELINE ? compoOrpheline.cp : null);
-  dernier = {
-    horodatage: new Date(maintenant).toISOString().slice(0, 19),
-    duree_marque_s: Math.round((maintenant - (debutLecture || maintenant)) / 100) / 10,
-    marque: marque || '', statut: marque ? (MARQUES[marque] || 'hors liste') : 'non lue',
-    composition: cp ? formatCompo(cp) : '', composition_ajoutee: !!cp, delai_compo_s: cp ? 0 : '',
-    taille: '', type: '', destination: destination(marque, cp || {}), _cp: cp, _t: maintenant,
-  };
-  journal.push(dernier); sauver();
-  compoOrpheline = null; votesMarque = {}; votesCompo = {}; debutLecture = null;
-  derniereMarque = marque; videDepuisEnregistrement = false;
-  afficherCheck((marque || 'Sans marque') + ' → ' + dernier.destination, false);
-  if (FENETRE_MS > 0 && !cp) { etat = 'compo'; finFenetre = maintenant + FENETRE_MS; } else etat = 'marque';
+function ouvrirChoix(marque, maintenant) {
+  enAttente = { marque, debut: debutLecture || maintenant, tLue: maintenant };
+  mode = 'choix';
+  $('etatMarque').textContent = marque ? `Marque : ${marque}` : 'Marque : non indiquée';
+  finChoix = DELAI_ETAT_MS > 0 ? maintenant + DELAI_ETAT_MS : 0;
+  $('etatTemps').parentElement.style.display = DELAI_ETAT_MS > 0 ? 'block' : 'none';
+  $('etat').classList.add('show');
+  if (navigator.vibrate) navigator.vibrate(40);
   majChips();
 }
 
-function ajouterCompo(cp, maintenant) {
-  dernier._cp = cp;
-  dernier.composition = formatCompo(cp); dernier.composition_ajoutee = true;
-  dernier.delai_compo_s = Math.round((maintenant - dernier._t) / 100) / 10;
-  dernier.destination = destination(dernier.marque || null, cp);
-  sauver(); votesCompo = {};
-  afficherCheck('Composition ajoutée → ' + dernier.destination, true);
+function choisir(etat) {
+  if (mode !== 'choix' || !enAttente) return;
+  const maintenant = Date.now(), m = enAttente.marque;
+  const rec = {
+    horodatage: new Date(maintenant).toISOString().slice(0, 19),
+    duree_marque_s: Math.round((enAttente.tLue - enAttente.debut) / 100) / 10,
+    duree_totale_s: Math.round((maintenant - enAttente.debut) / 100) / 10,
+    marque: m || '', statut: m ? (MARQUES[m] || 'hors liste') : 'non lue',
+    etat: etat || 'non indiqué', etat_choisi: !!etat,
+    destination: destinationEtat(m, etat),
+  };
+  journal.push(rec); sauver();
+  $('etat').classList.remove('show');
+  afficherCheck('Merci, vêtement enregistré');
+  mode = 'scan'; enAttente = null; votesMarque = {}; debutLecture = null;
+  derniereMarque = m; videDepuisEnregistrement = false;
   majChips();
-  etat = 'marque';
-  setTimeout(majChips, CHECK_MS);
 }
 
 function analyser(texte) {
+  if (mode !== 'scan') return;                                  // pas de lecture pendant le choix de l'état
   const maintenant = Date.now();
   const [marque, score] = detecterMarqueScore(texte);
-  const cp = extraireComposition(texte);
-  const compoOk = compoComplete(cp);
-  const tl = detecterTaille(texte), ty = detecterType(texte);
-
-  if (!marque) videDepuisEnregistrement = true;          // l'étiquette précédente a quitté le cadre
-  // Même étiquette que celle qu'on vient d'enregistrer : on l'ignore
-  const nouvelleMarque = marque && (marque !== derniereMarque || videDepuisEnregistrement);
-
-  // 1. Pendant la fenêtre : une composition complète s'ajoute au dernier vêtement
-  if (etat === 'compo' && compoOk && (!marque || (dernier && marque === dernier.marque))) {   // l'étiquette de composition porte parfois aussi la marque
-    if (vote(votesCompo, JSON.stringify(cp)) >= 2) { ajouterCompo(cp, maintenant); }
-    if (tl && dernier && !dernier.taille) dernier.taille = tl;
-    majChips(); return;
-  }
-  if (etat === 'compo' && (tl || ty) && dernier) { if (tl && !dernier.taille) dernier.taille = tl; if (ty && !dernier.type) dernier.type = ty; sauver(); }
-
-  // 2. Une marque : enregistrement immédiat (1 lecture si exacte, 2 si approximative)
-  if (nouvelleMarque) {
-    if (!debutLecture) debutLecture = maintenant;
-    if (score >= 100 || vote(votesMarque, marque) >= 2) {
-      enregistrerMarque(marque, maintenant, compoOk ? cp : null);   // marque et composition sur la même étiquette
-      if (tl) dernier.taille = tl; if (ty) dernier.type = ty; sauver();
-      return;
-    }
-  }
-
-  // 3. Hors fenêtre : une composition lue avant la marque est gardée en attente
-  if (etat === 'marque' && compoOk && !marque) {
-    if (vote(votesCompo, JSON.stringify(cp)) >= 2) { compoOrpheline = { cp, t: maintenant }; votesCompo = {}; }
-    if (!debutLecture) debutLecture = maintenant;
-  }
-  majChips();
+  if (!marque) { videDepuisEnregistrement = true; majChips(); return; }
+  if (marque === derniereMarque && !videDepuisEnregistrement) return;  // même étiquette encore dans le cadre
+  if (!debutLecture) debutLecture = maintenant;
+  if (score >= 100 || vote(votesMarque, marque) >= 2) ouvrirChoix(marque, maintenant);  // 1 lecture si exacte, 2 si approximative
+  else majChips();
 }
 
-function tic() {   // gère la fin de la fenêtre et la barre de progression
-  const maintenant = Date.now();
-  if (etat === 'compo') {
-    const reste = Math.max(0, finFenetre - maintenant);
-    $('progBar').style.width = (100 * reste / Math.max(1, FENETRE_MS)) + '%';
-    if (reste === 0) { etat = 'marque'; votesCompo = {}; majChips(); }
-  } else $('progBar').style.width = '0%';
-  if (compoOrpheline && maintenant - compoOrpheline.t > ATTENTE_COMPO_ORPHELINE) { compoOrpheline = null; majChips(); }
+function tic() {   // compte à rebours du choix de l'état
+  if (mode === 'choix' && finChoix) {
+    const reste = Math.max(0, finChoix - Date.now());
+    $('etatTemps').style.width = (100 * reste / DELAI_ETAT_MS) + '%';
+    if (reste === 0) choisir(null);
+  }
   requestAnimationFrame(tic);
 }
 
@@ -423,7 +411,7 @@ function capturerZone() {
 
 async function boucle() {
   if (!scanning) return;
-  if (!busy && !$('panel').classList.contains('show')) {
+  if (!busy && mode === 'scan' && !$('panel').classList.contains('show')) {
     const c = capturerZone();
     if (c) {
       busy = true; $('roi').className = 'reading';
@@ -467,18 +455,20 @@ async function demarrer() {
 
 // Boutons
 $('bStart').onclick = demarrer;
-$('bNext').onclick = () => enregistrerMarque(null, Date.now());   // vêtement sans étiquette de marque
+$('bNext').onclick = () => { if (mode === 'scan') ouvrirChoix(null, Date.now()); };   // vêtement sans étiquette de marque
+document.querySelectorAll('#etat .choix button').forEach(b => b.onclick = () => choisir(b.dataset.etat));
+$('bPasser').onclick = () => choisir(null);
 let torchOn = false;
 $('bTorch').onclick = () => { torchOn = !torchOn; track.applyConstraints({ advanced: [{ torch: torchOn }] }).catch(() => {}); $('bTorch').textContent = torchOn ? 'Lampe ✓' : 'Lampe'; };
 function afficherResultats() {
   $('sN').textContent = journal.length;
   const d = journal.map(r => r.duree_marque_s).filter(x => x > 0);
   $('sT').textContent = d.length ? (d.reduce((a, b) => a + b, 0) / d.length).toFixed(1) : '–';
-  $('sC').textContent = journal.length ? Math.round(100 * journal.filter(r => r.composition_ajoutee).length / journal.length) + ' %' : '–';
+  $('sC').textContent = journal.length ? Math.round(100 * journal.filter(r => r.etat_choisi).length / journal.length) + ' %' : '–';
   $('rows').innerHTML = '';
   for (const r of [...journal].reverse()) {
     const tr = document.createElement('tr');
-    for (const v of [r.horodatage.slice(11), r.duree_marque_s + ' s', r.marque || '—', r.composition || '—', r.taille || '—', r.destination]) { const td = document.createElement('td'); td.textContent = v; tr.appendChild(td); }
+    for (const v of [r.horodatage.slice(11), r.duree_marque_s + ' s', r.marque || '—', r.etat || '—']) { const td = document.createElement('td'); td.textContent = v; tr.appendChild(td); }
     $('rows').appendChild(tr);
   }
   $('panel').classList.add('show');
@@ -486,8 +476,8 @@ function afficherResultats() {
 $('bResults').onclick = afficherResultats;
 $('bBack').onclick = () => $('panel').classList.remove('show');
 $('bDebug').onclick = () => { const d = $('dbg'); d.style.display = d.style.display === 'block' ? 'none' : 'block'; $('bDebug').textContent = d.style.display === 'block' ? 'Masquer le texte lu' : 'Afficher le texte lu'; };
-$('fenetre').value = String(FENETRE_MS / 1000);
-$('fenetre').onchange = e => { FENETRE_MS = +e.target.value * 1000; try { localStorage.setItem('benne-scan-fenetre', FENETRE_MS); } catch (x) {} };
+$('fenetre').value = String(DELAI_ETAT_MS / 1000);
+$('fenetre').onchange = e => { DELAI_ETAT_MS = +e.target.value * 1000; try { localStorage.setItem('benne-scan-delai-etat', DELAI_ETAT_MS); } catch (x) {} };
 $('bClear').onclick = () => { if (confirm('Effacer tous les résultats enregistrés sur cet appareil ?')) { journal = []; sauver(); afficherResultats(); majChips(); } };
 $('bCsv').onclick = () => {
   if (!journal.length) return;
